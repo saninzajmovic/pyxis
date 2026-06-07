@@ -38,5 +38,6 @@ data class LocationWithContainers(
  */
 data class ItemSearchResult(
     val item: ItemEntity,
-    val breadcrumb: String  // e.g. "Basement > Box 1 > Small Tin" or "Basement (no container)"
+    val breadcrumb: String,  // e.g. "Basement > Box 1 > Small Tin" or "Basement (no container)"
+    val categoryName: String? = null
 )
