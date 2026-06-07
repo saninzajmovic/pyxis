@@ -5,8 +5,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -29,10 +29,11 @@ fun ContainerDetailScreen(
 
     val state by viewModel.containerDetailUiState.collectAsState()
     val allLocations by viewModel.locationUiState.collectAsState()
+    val categoryState by viewModel.categoryUiState.collectAsState()
 
+    var showRoomModal by remember { mutableStateOf(false) }
     var showAddContainer by remember { mutableStateOf(false) }
     var showAddItem by remember { mutableStateOf(false) }
-    var fabExpanded by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -46,31 +47,13 @@ fun ContainerDetailScreen(
                 },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 }
             )
         },
         floatingActionButton = {
-            Column(horizontalAlignment = Alignment.End) {
-                if (fabExpanded) {
-                    SmallFloatingActionButton(
-                        onClick = { showAddItem = true; fabExpanded = false },
-                        modifier = Modifier.padding(bottom = 8.dp)
-                    ) {
-                        Text("+ Item", modifier = Modifier.padding(horizontal = 8.dp))
-                    }
-                    SmallFloatingActionButton(
-                        onClick = { showAddContainer = true; fabExpanded = false },
-                        modifier = Modifier.padding(bottom = 8.dp)
-                    ) {
-                        Text("+ Sub-container", modifier = Modifier.padding(horizontal = 8.dp))
-                    }
-                }
-                FloatingActionButton(onClick = { fabExpanded = !fabExpanded }) {
-                    Icon(Icons.Default.Add, contentDescription = "Add")
-                }
-            }
+            PyxisFab(onClick = { showRoomModal = true })
         }
     ) { padding ->
         if (state.isLoading) {
@@ -80,7 +63,6 @@ fun ContainerDetailScreen(
             return@Scaffold
         }
 
-        // Show container description if present
         val container = state.container
         val hasContent = state.childContainers.isNotEmpty() || state.items.isNotEmpty()
 
@@ -92,7 +74,7 @@ fun ContainerDetailScreen(
             ),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            // Description card if present
+            // Description card
             if (container != null && container.description.isNotBlank()) {
                 item {
                     Card(
@@ -102,7 +84,7 @@ fun ContainerDetailScreen(
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text(
-                            text = container.description,
+                            container.description,
                             style = MaterialTheme.typography.bodyMedium,
                             modifier = Modifier.padding(12.dp)
                         )
@@ -120,7 +102,7 @@ fun ContainerDetailScreen(
             } else {
                 // ── Child containers ───────────────────────────────────────
                 if (state.childContainers.isNotEmpty()) {
-                    item { SectionHeader("Sub-containers") }
+                    item { SectionLabel("Sub-containers") }
                     items(state.childContainers, key = { "c-${it.id}" }) { child ->
                         var showEdit by remember { mutableStateOf(false) }
                         var showDelete by remember { mutableStateOf(false) }
@@ -133,11 +115,21 @@ fun ContainerDetailScreen(
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(16.dp),
+                                    .padding(start = 16.dp, top = 12.dp, bottom = 12.dp, end = 4.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Column(modifier = Modifier.weight(1f)) {
-                                    Text(child.name, style = MaterialTheme.typography.titleMedium)
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Text(child.name, style = MaterialTheme.typography.titleMedium)
+                                        child.categoryId?.let { cid ->
+                                            categoryState.categories.firstOrNull { it.id == cid }?.let {
+                                                CategoryPill(name = it.name)
+                                            }
+                                        }
+                                    }
                                     if (child.description.isNotBlank()) {
                                         Text(
                                             child.description,
@@ -148,7 +140,7 @@ fun ContainerDetailScreen(
                                         )
                                     }
                                 }
-                                ItemRowActions(
+                                ThreeDotsMenu(
                                     onEdit = { showEdit = true },
                                     onDelete = { showDelete = true }
                                 )
@@ -160,8 +152,12 @@ fun ContainerDetailScreen(
                                 title = "Edit sub-container",
                                 initialName = child.name,
                                 initialDescription = child.description,
-                                onConfirm = { name, desc ->
-                                    viewModel.updateContainer(child, name, desc)
+                                initialLocationId = child.locationId,
+                                initialCategoryId = child.categoryId,
+                                locations = allLocations.locations,
+                                categories = categoryState.categories,
+                                onConfirm = { name, desc, locId, catId ->
+                                    viewModel.updateContainer(child, name, desc, locId, catId)
                                     showEdit = false
                                 },
                                 onDismiss = { showEdit = false }
@@ -181,52 +177,46 @@ fun ContainerDetailScreen(
                     }
                 }
 
-                // ── Items ──────────────────────────────────────────────────
+                // ── Items — tap to open detail, no inline edit/delete ──────
                 if (state.items.isNotEmpty()) {
-                    item { SectionHeader("Items") }
+                    item { SectionLabel("Items") }
                     items(state.items, key = { "i-${it.id}" }) { item ->
-                        var showDelete by remember { mutableStateOf(false) }
-
+                        val categoryName = item.categoryId?.let { cid ->
+                            categoryState.categories.firstOrNull { it.id == cid }?.name
+                        }
                         Card(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable { onItemClick(item.id) }
                         ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(16.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(item.name, style = MaterialTheme.typography.titleMedium)
-                                    if (item.description.isNotBlank()) {
-                                        Text(
-                                            item.description,
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            maxLines = 2,
-                                            overflow = TextOverflow.Ellipsis
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.Top
+                                ) {
+                                    Text(
+                                        item.name,
+                                        style = MaterialTheme.typography.titleMedium,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    if (categoryName != null) {
+                                        CategoryPill(
+                                            name = categoryName,
+                                            modifier = Modifier.padding(start = 8.dp)
                                         )
                                     }
                                 }
-                                ItemRowActions(
-                                    onEdit = { onItemClick(item.id) },
-                                    onDelete = { showDelete = true }
-                                )
+                                if (item.description.isNotBlank()) {
+                                    Text(
+                                        item.description,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
                             }
-                        }
-
-                        if (showDelete) {
-                            ConfirmDeleteDialog(
-                                title = "Delete \"${item.name}\"?",
-                                message = "This item will be permanently removed.",
-                                onConfirm = {
-                                    viewModel.deleteItem(item)
-                                    showDelete = false
-                                },
-                                onDismiss = { showDelete = false }
-                            )
                         }
                     }
                 }
@@ -234,14 +224,24 @@ fun ContainerDetailScreen(
         }
     }
 
-    // ── Dialogs ────────────────────────────────────────────────────────────
+    // ── Modals & dialogs ───────────────────────────────────────────────────
     val locationId = state.container?.locationId
+
+    if (showRoomModal) {
+        RoomAddModal(
+            onItem      = { showRoomModal = false; showAddItem = true },
+            onContainer = { showRoomModal = false; showAddContainer = true },
+            onDismiss   = { showRoomModal = false }
+        )
+    }
 
     if (showAddContainer && locationId != null) {
         ContainerDialog(
             title = "Add sub-container",
-            onConfirm = { name, desc ->
-                viewModel.addContainer(locationId, name, desc, parentContainerId = containerId)
+            initialLocationId = locationId,
+            categories = categoryState.categories,
+            onConfirm = { name, desc, _, catId ->
+                viewModel.addContainer(locationId, name, desc, parentContainerId = containerId, categoryId = catId)
                 showAddContainer = false
             },
             onDismiss = { showAddContainer = false }
@@ -251,14 +251,15 @@ fun ContainerDetailScreen(
     if (showAddItem && locationId != null) {
         AddItemDialog(
             locations = allLocations.locations,
+            categories = categoryState.categories,
             getContainersForLocation = viewModel::getContainersForLocation,
             defaultLocationId = locationId,
             defaultContainerId = containerId,
-            onConfirm = { name, desc, locId, cId ->
+            onConfirm = { name, desc, locId, cId, categoryId ->
                 if (cId != null) {
-                    viewModel.addItemToContainer(locId, cId, name, desc)
+                    viewModel.addItemToContainer(locId, cId, name, desc, categoryId)
                 } else {
-                    viewModel.addItemToLocation(locId, name, desc)
+                    viewModel.addItemToLocation(locId, name, desc, categoryId)
                 }
                 showAddItem = false
             },
@@ -268,7 +269,7 @@ fun ContainerDetailScreen(
 }
 
 @Composable
-private fun SectionHeader(text: String) {
+private fun SectionLabel(text: String) {
     Text(
         text = text,
         style = MaterialTheme.typography.labelLarge,
