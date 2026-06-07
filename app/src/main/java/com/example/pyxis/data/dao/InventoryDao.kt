@@ -8,7 +8,6 @@ import kotlinx.coroutines.flow.Flow
 interface InventoryDao {
 
     // ── Locations ──────────────────────────────────────────────────────────
-
     @Query("SELECT * FROM locations ORDER BY name ASC")
     fun getAllLocations(): Flow<List<LocationEntity>>
 
@@ -25,7 +24,6 @@ interface InventoryDao {
     suspend fun deleteLocation(location: LocationEntity)
 
     // ── Containers ─────────────────────────────────────────────────────────
-
     @Query("SELECT * FROM containers WHERE locationId = :locationId AND parentContainerId IS NULL ORDER BY name ASC")
     fun getTopLevelContainersForLocation(locationId: Long): Flow<List<ContainerEntity>>
 
@@ -47,8 +45,23 @@ interface InventoryDao {
     @Delete
     suspend fun deleteContainer(container: ContainerEntity)
 
-    // ── Items ──────────────────────────────────────────────────────────────
+    // ── Categories ─────────────────────────────────────────────────────────
+    @Query("SELECT * FROM categories ORDER BY name ASC")
+    fun getAllCategories(): Flow<List<CategoryEntity>>
 
+    @Query("SELECT * FROM categories WHERE id = :id")
+    suspend fun getCategoryById(id: Long): CategoryEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertCategory(category: CategoryEntity): Long
+
+    @Update
+    suspend fun updateCategory(category: CategoryEntity)
+
+    @Delete
+    suspend fun deleteCategory(category: CategoryEntity)
+
+    // ── Items ──────────────────────────────────────────────────────────────
     @Query("SELECT * FROM items WHERE locationId = :locationId AND containerId IS NULL ORDER BY name ASC")
     fun getItemsDirectlyInLocation(locationId: Long): Flow<List<ItemEntity>>
 
@@ -61,6 +74,15 @@ interface InventoryDao {
     @Query("SELECT * FROM items WHERE name LIKE '%' || :query || '%' ORDER BY name ASC")
     suspend fun searchItems(query: String): List<ItemEntity>
 
+    @Query("SELECT * FROM items WHERE name LIKE '%' || :query || '%' AND (:categoryId IS NULL OR categoryId = :categoryId) ORDER BY name ASC")
+    suspend fun searchItemsFiltered(query: String, categoryId: Long?): List<ItemEntity>
+
+    @Query("SELECT * FROM items WHERE categoryId = :categoryId ORDER BY name ASC")
+    suspend fun getItemsByCategory(categoryId: Long): List<ItemEntity>
+
+    @Query("SELECT * FROM items ORDER BY name ASC")
+    suspend fun getAllItems(): List<ItemEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertItem(item: ItemEntity): Long
 
@@ -70,8 +92,7 @@ interface InventoryDao {
     @Delete
     suspend fun deleteItem(item: ItemEntity)
 
-    // ── Bulk helpers for breadcrumb resolution ─────────────────────────────
-
+    // ── Bulk helpers ───────────────────────────────────────────────────────
     @Query("SELECT * FROM containers WHERE id IN (:ids)")
     suspend fun getContainersByIds(ids: List<Long>): List<ContainerEntity>
 
